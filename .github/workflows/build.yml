@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Code
@@ -16,30 +16,47 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Dependencies
+      - name: Find package.json and Build
         run: |
-          npm install
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-
-      - name: Build Web Assets
-        run: npm run build
-
-      - name: Initialize and Sync Capacitor
-        run: |
-          npx cap init GrokApp com.grok.app --web-dir dist
+          # package.json dosyasının nerede olduğunu otomatik bul
+          PACKAGE_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" | head -n 1)
+          
+          if [ -z "$PACKAGE_PATH" ]; then
+            echo "HATA: Repo içinde package.json bulunamadı! Lütfen dosyaları doğru yüklediğinizden emin olun."
+            exit 1
+          fi
+          
+          PROJECT_DIR=$(dirname "$PACKAGE_PATH")
+          echo "Proje dizini bulundu: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          
+          # Bağımlılıkları yükle ve derle
+          npm install --legacy-peer-deps
+          npm run build
+          
+          # Derleme çıktı klasörünü tespit et
+          BUILD_DIR="dist"
+          if [ -d "build" ]; then BUILD_DIR="build"; fi
+          if [ -d "out" ]; then BUILD_DIR="out"; fi
+          
+          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
+          
+          if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ]; then
+            npx cap init GrokApp com.grok.app --web-dir $BUILD_DIR
+          fi
+          
           npx cap add android || true
           npx cap sync android
-
-      - name: Build APK via Gradle
-        run: |
+          
+          # Android APK derleme
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
@@ -48,4 +65,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: grok-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: "**/android/app/build/outputs/apk/debug/app-debug.apk"
