@@ -24,25 +24,34 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Find package.json and Build
+      - name: Unzip Workspace & Build
         run: |
-          # package.json dosyasının nerede olduğunu otomatik bul
+          # Sıkıştırılmış zip dosyasını tespit et ve çıkar
+          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+          
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Zip dosyası bulundu: $ZIP_FILE. Çıkarılıyor..."
+            unzip -o "$ZIP_FILE" -d extracted_project
+            cd extracted_project
+          fi
+
+          # Proje alt klasörde kalmışsa klasörün içine geç
           PACKAGE_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" | head -n 1)
           
           if [ -z "$PACKAGE_PATH" ]; then
-            echo "HATA: Repo içinde package.json bulunamadı! Lütfen dosyaları doğru yüklediğinizden emin olun."
+            echo "HATA: Zip içinde package.json bulunamadı!"
             exit 1
           fi
           
           PROJECT_DIR=$(dirname "$PACKAGE_PATH")
-          echo "Proje dizini bulundu: $PROJECT_DIR"
+          echo "Proje dizinine geçiliyor: $PROJECT_DIR"
           cd "$PROJECT_DIR"
           
           # Bağımlılıkları yükle ve derle
           npm install --legacy-peer-deps
           npm run build
           
-          # Derleme çıktı klasörünü tespit et
+          # Derleme çıktı klasörünü otomatik belirle
           BUILD_DIR="dist"
           if [ -d "build" ]; then BUILD_DIR="build"; fi
           if [ -d "out" ]; then BUILD_DIR="out"; fi
@@ -56,7 +65,7 @@ jobs:
           npx cap add android || true
           npx cap sync android
           
-          # Android APK derleme
+          # Android APK çıktısı alma
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
